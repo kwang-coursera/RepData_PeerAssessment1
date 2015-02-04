@@ -12,33 +12,104 @@ The data will be read into a variable named 'data'.
 data <- read.csv(unz("activity.zip", 'activity.csv'))
 ```
 
+Import libraries.
+```{r echo=TRUE, message=FALSE}
+library(dplyr)
+library(xtable)
+library(ggplot2)
+```
 
 ## What is mean total number of steps taken per day?
 **1. Total number of steps**
-```{r echo=TRUE}
-total_steps <- sum(data$steps, na.rm = TRUE)
+Total steps per day is:
+```{r echo=TRUE, results='asis'}
+total_daily_steps <- summarise(
+  group_by(data, date),
+  daily_steps = sum(steps, na.rm = TRUE)
+  )
+print(xtable(total_daily_steps), type='html')
 ```
-The total number of steps per day is `r total_steps`.
+
 
 **2. Histogram of number of steps per day**
 ```{r}
-hist(data$steps, main = "Histogram of Total Steps per Day", xlab="steps", ylab="frequency")
+hist(total_daily_steps$daily_steps, main = "Histogram of Total Steps per Day", xlab="steps", ylab="frequency")
 ```
 
 **3. Mean and median of steps per day**
 ```{r echo=TRUE}
-avg_steps <- mean(data$steps, na.rm = TRUE)
-median_steps <- median(data$steps, na.rm = TRUE)
+avg_steps <- mean(total_daily_steps$daily_steps)
+median_steps <- median(total_daily_steps$daily_steps)
 ```
 - Average steps per day is `r avg_steps`
 - Median steps per day is `r median_steps`
 
 ## What is the average daily activity pattern?
+**1. Make a time series plot, of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)**
+```{r}
+steps_by_interval <- summarise(
+  group_by(data, interval),
+  steps = mean(steps, na.rm=TRUE)
+)
 
+qplot(interval, steps, data=steps_by_interval, geom=c('line'))
+```
 
+**2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?**
+```{r}
+max_interval <- filter(steps_by_interval, steps == max(steps_by_interval$steps))$interval[1]
+```
+The interval with the highest average steps is `r max_interval`.
 
 ## Imputing missing values
+```{r}
+missing_values <- dim(filter(data, is.na(steps)))[1]
+```
 
+**1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)**  
+- There are `r missing_values` missing values in the dataset.
 
+**2. Devise a strategy for filling in all of the missing values in the dataset.**  
+A strategy to fill in all of the missing values is to use the daily average of that interval.
+
+**3. Create a new dataset that is equal to the original dataset but with the missing data filled in.**
+```{r}
+data_fillna <- merge(data, steps_by_interval, by = c('interval'))
+data_fillna$steps <- data_fillna$steps.x
+data_fillna$steps[is.na(data_fillna$steps.x)] <- data_fillna$steps.y[is.na(data_fillna$steps.x)]
+
+data_fillna <- data_fillna[, c('steps', 'date', 'interval')]
+```
+
+**4. Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day**
+
+```{r}
+total_daily_fillna <- summarise(group_by(data_fillna, date),
+                                steps = sum(steps)
+                                )
+avg_daily_fillna <- mean(total_daily_fillna$steps)
+median_daily_fillna <- median(total_daily_fillna$steps)
+
+hist(total_daily_fillna$steps, main='Histogram of Daily Steps (fillna)', xlab = 'steps', ylab = 'frequency')
+```
+
+- The average daily steps after fill na becomes: `r avg_daily_fillna`
+- The median daily steps after fill na becomes: `r median_daily_fillna`
+- Imputing the missing values had more impact on the mean than the median, and lowered the variance in estimating daily average steps.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+**1. Creating a new weekend flag variable **  
+```{r}
+data_fillna$weekday <- 'weekday'
+data_fillna$weekday[weekdays(as.Date(data_fillna$date)) == 'Saturday'] <- 'weekend'
+data_fillna$weekday[weekdays(as.Date(data_fillna$date)) == 'Sunday'] <- 'weekend'
+```
+
+**2. Panel plot of the intervals**  
+```{r}
+data_by_weekday <- summarise(
+  group_by(data_fillna, weekday, interval),
+  steps = mean(steps)
+  )
+qplot(interval, steps, facets = .~weekday, data=data_by_weekday, geom=c('line'))
+```
